@@ -1,0 +1,87 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+rm(list=ls())
+library(plyr)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+library(ggmap)
+library(curl)
+library(jsonlite)
+library(rgdal)
+library(ROCR)
+```
+
+
+```{r}
+d.in <- read.csv('~/Desktop/data_analysis/project/visionzero/data/final/fatality_yearly_final.csv', header = TRUE)
+
+# Get a map
+nyc <- get_map(location = c(lon = -73.935, lat = 40.712), zoom = 11)
+
+fat <- d.in %>% filter(Fatalities == 1)
+
+#bike_zones <- readOGR("http://www.nyc.gov/html/dot/downloads/misc/bike_priority_districts.json")
+
+g <- ggmap(nyc) + geom_point(data = fat, aes(x = Lon, y = Lat, color="red"), size = 1, shape = 21) #+ geom_polygon(data = bike_zones, aes(x=long, y=lat, group=group, fill=total), color = "black", #fill=NA, size=0.5))
+plot(g)
+
+```
+
+```{r}
+
+d.in <- d.in %>%
+  mutate(Fatalities = as.factor(Fatalities),
+         PedFatalit = as.factor(PedFatalit),
+         BikeFatali = as.factor(BikeFatali),
+         MVOFatalit = as.factor(MVOFatalit),
+         bike_priority_districts = as.factor(bike_priority_districts),
+         enhanced_crossings = as.factor(enhanced_crossings),
+         left_turn_traffic_calming = as.factor(left_turn_traffic_calming),
+         neighborhood_slow_zones = as.factor(neighborhood_slow_zones), 
+         leading_pedestrian_interval_signals = as.factor(leading_pedestrian_interval_signals), 
+         signal_timing = as.factor(signal_timing), 
+         speed_humps = as.factor(speed_humps), 
+         safe_streets_for_seniors = as.factor(safe_streets_for_seniors),
+         street_improvement_projects_corridors = as.factor(street_improvement_projects_corridors),
+         vz_priority_corridors = as.factor(vz_priority_corridors),
+         vz_priority_intersections = as.factor(vz_priority_intersections),
+         arterial_slow_zones = as.factor(arterial_slow_zones), 
+         vz_priority_zones = as.factor(vz_priority_zones))
+
+fat_year.glm <- glm(Fatalities ~ bike_priority_districts + enhanced_crossings + safe_streets_for_seniors + arterial_slow_zones	+ signal_timing + speed_humps + street_improvement_projects_corridors + leading_pedestrian_interval_signals + left_turn_traffic_calming	+ vz_priority_corridors + vz_priority_intersections + vz_priority_zones + neighborhood_slow_zones, family="binomial", d.in)
+
+summary(fat_year.glm)
+exp(coef(fat_year.glm))
+exp(confint(fat_year.glm))
+
+```
+
+Splitting Data
+```{r}
+
+#split data 70-30
+smp_size <- floor(0.70 * nrow(d.in))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(d.in)), size = smp_size)
+d.train <- d.in[train_ind, ]
+d.test <- d.in[-train_ind, ]
+
+fat.train <- glm(Fatalities ~ bike_priority_districts + enhanced_crossings + safe_streets_for_seniors + arterial_slow_zones	+ signal_timing + speed_humps + street_improvement_projects_corridors + leading_pedestrian_interval_signals + left_turn_traffic_calming	+ vz_priority_corridors + vz_priority_intersections + vz_priority_zones + neighborhood_slow_zones, family="binomial", d.train)
+
+d.test$predicted_fatality = predict.glm(fat.train, newdata = d.test, type="response")
+
+d.test$predicted_fatality <- ifelse(d.test$predicted_fatality >= 0.1, 
+                                   1,
+                                   0)
+
+x <- d.test %>% filter(predicted_fatality == 1) %>% nrow()
+
+```
+
